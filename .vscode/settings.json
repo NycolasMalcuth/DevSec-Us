@@ -18,5 +18,12 @@
   "files.associations": {
     "*.yml": "yaml",
     "*.yaml": "yaml"
-  }
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  "typescript.preferences.importModuleSpecifierEnding": "js"
 }
