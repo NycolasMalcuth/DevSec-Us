@@ -223,7 +223,6 @@
       </div>
     </div>
 
-    <!-- campo real enviado ao servidor: será o NOME da pasta (ex: "verde_escuro") -->
     <input type="hidden" id="hat_color" name="hat_color" value="" />
 
     <button type="submit">Entrar</button>
@@ -242,21 +241,20 @@
       const previewDot = document.getElementById('previewDot');
       const previewText = document.getElementById('previewText');
       const form = document.getElementById('joinForm');
-
-      // Helper: nomes das pastas válidas (mesma ordem visual)
       const folders = swatches.map((s) => s.dataset.folder);
 
-      // click handler: marca selecionada e atualiza input/preview
       function selectFolder(folderName) {
         swatches.forEach((s) =>
           s.classList.toggle('selected', s.dataset.folder === folderName),
         );
+
         hatColorInput.value = folderName || '';
-        // derive a cor de preview a partir do swatch background computed style
+
         const sel = swatches.find((s) => s.dataset.folder === folderName);
+
         if (sel) {
-          // computed background
           const bg = getComputedStyle(sel).backgroundColor || '#fff';
+
           previewDot.style.background = bg;
           previewText.textContent =
             'Selecionado: ' +
@@ -268,11 +266,11 @@
         }
       }
 
-      // wire up swatches
       swatches.forEach((s) => {
         s.addEventListener('click', () => selectFolder(s.dataset.folder));
-        // keyboard accessibility
+
         s.tabIndex = 0;
+
         s.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -281,21 +279,14 @@
         });
       });
 
-      // If you want to preselect based on previous value, uncomment:
-      // const initial = hatColorInput.value; if (initial) selectFolder(initial);
-
-      // On submit: if no color chosen, pick random
       form.addEventListener('submit', (ev) => {
         if (!hatColorInput.value) {
           const pick = folders[Math.floor(Math.random() * folders.length)];
           hatColorInput.value = pick;
           selectFolder(pick);
         }
-        // allow submit to proceed
-      });
 
-      // small UX: click first swatch by default? (we keep it random per request)
-      // selectFolder(folders[0]);
+      });
     })();
   </script>
 </body>

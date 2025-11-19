@@ -6,9 +6,9 @@ import * as crypto from 'node:crypto';
 
 export function registerSocket(io: Server) {
   io.on('connection', (socket: Socket) => {
-    // ---- JOIN ----
     socket.on('join', (data) => {
       const room = cleanInputString(data.room, '');
+
       if (!room) return;
 
       const playerId = crypto.randomUUID();
@@ -21,6 +21,7 @@ export function registerSocket(io: Server) {
       };
 
       sidMap[socket.id] = { room, playerId };
+
       socket.join(room);
 
       const x = parseFloat(data.x ?? 0) || 0;
@@ -30,6 +31,7 @@ export function registerSocket(io: Server) {
       rooms[room][playerId] = { x, y, ...playerMeta[playerId] };
 
       socket.emit('joined', { player_id: playerId, players: rooms[room] });
+
       socket.to(room).emit('player_joined', {
         player_id: playerId,
         x,
@@ -38,10 +40,11 @@ export function registerSocket(io: Server) {
       });
     });
 
-    // ---- POS_UPDATE ----
     socket.on('pos_update', (data) => {
       const { room, player_id } = data;
+
       const player = rooms[room]?.[player_id];
+
       if (!player) return;
 
       player.x = parseFloat(data.x ?? player.x);
@@ -56,19 +59,23 @@ export function registerSocket(io: Server) {
       });
     });
 
-    // ---- LEAVE ----
     socket.on('leave', ({ room, player_id }) => {
       removePlayerFromState(room, player_id);
+
       socket.leave(room);
+
       socket.to(room).emit('player_left', { player_id });
     });
 
-    // ---- DISCONNECT ----
     socket.on('disconnect', () => {
       const entry = sidMap[socket.id];
+
       if (!entry) return;
+
       const { room, playerId } = entry;
+
       removePlayerFromState(room, playerId);
+
       socket.to(room).emit('player_left', { player_id: playerId });
     });
   });

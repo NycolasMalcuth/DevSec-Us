@@ -3,7 +3,7 @@
 // Gerencia jogador local e jogadores remotos via socket.io
 
 class GameMap {
-  constructor(svgPath = '/static/map.svg') {
+  constructor(svgPath = '/public/map.svg') {
     this.svgPath = svgPath;
     this.img = new Image();
     this.ready = false;
@@ -152,7 +152,7 @@ function startGame(roomId) {
   window.addEventListener('keydown', (e) => (keys[e.key.toLowerCase()] = true));
   window.addEventListener('keyup', (e) => (keys[e.key.toLowerCase()] = false));
 
-  const gameMap = new GameMap('/static/map.svg');
+  const gameMap = new GameMap('/public/map.svg');
   const socket = io(); // conecta ao servidor
   const player = new Player(gameMap, socket, roomId);
 

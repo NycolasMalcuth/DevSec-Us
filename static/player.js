@@ -1,6 +1,5 @@
 // static/player.js
 class Player {
-  // options: { map, playerId (opt), name, playerSize, color }
   constructor(map, options = {}) {
     this.map = map;
     this.playerId = options.playerId || null;
@@ -10,12 +9,10 @@ class Player {
     this.playerSize = options.playerSize || 75;
     this.color = options.color || '#C50A0A';
 
-    // posição inicial
     this.x = (this.map.width || 1000) / 2;
     this.y = (this.map.height || 800) / 2;
     this.findSafeSpawn?.();
 
-    // animação
     this.facingRight = true;
     this.wasMoving = false;
     this.animationTime = 0;
@@ -24,24 +21,23 @@ class Player {
     this.frameIndex = 0;
     this.currentFrame = 'meio';
 
-    // frames: Image objects (não necessariamente com src ainda)
     this.frames = {};
     ['meio', 'direito', 'esquerdo'].forEach((k) => {
       this.frames[k] = new Image();
-      // se tivermos playerId já definido, usamos a rota dinâmica do servidor
+
       if (this.playerId) {
         this.frames[k].src = `/avatar/${this.playerId}/${k}.svg`;
       } else {
-        // fallback para arquivo estático (se existir)
         this.frames[k].src = `/static/personagem/${k}.svg`;
       }
     });
   }
 
-  // procura spawn seguro (opcional)
   findSafeSpawn() {
     if (!this.map || typeof this.map.isWalkable !== 'function') return;
+
     const step = 15;
+
     for (let y = 200; y < (this.map.height || 1000) - 200; y += step) {
       for (let x = 200; x < (this.map.width || 1000) - 200; x += step) {
         if (this.map.isWalkable(x, y, this.radius + 10)) {
