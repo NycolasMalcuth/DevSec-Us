@@ -1,4 +1,5 @@
 import express from 'express';
+import { renderFile } from 'ejs';
 import * as http from 'node:http';
 import { Server } from 'socket.io';
 import * as path from 'node:path';
@@ -14,16 +15,18 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-registerSocket(io);
-
-app.set('view engine', 'ejs');
+app.engine('html', renderFile);
+app.set('view engine', 'html');
 app.set('views', path.join(__dirname, '..', 'views'));
-app.use(express.static('public'));
+
+app.use(express.static('static'));
 app.use(express.urlencoded({ extended: true }));
 app.use(router);
 
+registerSocket(io);
+
 app.get('/', (_req, res) => {
-  res.send('DevSec-Us Server is running!');
+  res.json({ message: 'Server is running!' });
 });
 
 server.listen(PORT, () =>
