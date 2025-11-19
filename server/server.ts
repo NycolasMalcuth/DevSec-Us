@@ -1,4 +1,5 @@
 import express from 'express';
+import morgan from 'morgan';
 import { renderFile } from 'ejs';
 import * as http from 'node:http';
 import { Server } from 'socket.io';
@@ -19,11 +20,25 @@ app.engine('html', renderFile);
 app.set('view engine', 'html');
 app.set('views', path.join(__dirname, '..', 'views'));
 
+app.use(morgan('dev'));
 app.use(express.static('static'));
 app.use(express.urlencoded({ extended: true }));
 app.use(router);
 
 registerSocket(io);
+
+// Middleware personalizado para log de requisições
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on('finish', () => {
+    console.log(
+      `${req.method} ${req.url} - Status: ${res.statusCode} - Tempo: ${Date.now() - start}ms`,
+    );
+  });
+
+  next();
+});
 
 app.get('/', (_req, res) => {
   res.json({ message: 'Server is running!' });

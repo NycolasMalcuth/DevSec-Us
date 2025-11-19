@@ -26,13 +26,6 @@ export const renderRoom = (req: Request, res: Response) => {
   const { room_id } = req.params;
   const { name = 'Player', color = '' } = req.query;
 
-  console.log({
-    room_id,
-    name,
-    color,
-    folders: Object.keys(FOLDERS).sort(),
-  });
-
   res.render('room', {
     room_id,
     name,
