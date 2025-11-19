@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const STATIC_ROOT = path.join(__dirname, '..', '..', 'public');
+export const STATIC_ROOT = path.join(__dirname, '..', '..', 'static');
 export const PERSONAGEM_DIR = path.join(STATIC_ROOT, 'personagem');
 
 export const ALLOWED_FRAMES = ['meio', 'direito', 'esquerdo'] as const;
