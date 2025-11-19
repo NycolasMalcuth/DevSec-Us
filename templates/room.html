@@ -1,265 +1,391 @@
 <!doctype html>
 <html lang="pt-br">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Sala {{ room | default(room_id) }} - Mapa Multiplayer</title>
-  <style>
-    html,body{height:100%;margin:0;background:#061;color:#fff;font-family:system-ui,Arial;}
-    canvas{display:block; width:100%; height:100%;}
-    #ui {
-      position:absolute; left:12px; top:12px; z-index:30;
-      background:rgba(0,0,0,0.6); color:#0f0; padding:8px; border-radius:8px;
-      font-family:monospace; font-size:14px;
-    }
-    #ui input { margin-left:6px; }
-    #status { color:#9f9; margin-left:10px; font-size:13px; }
-  </style>
-</head>
-<body>
-  <canvas id="game"></canvas>
-
-  <div id="ui">
-    Sala: <span id="roomLabel">{{ room | default(room_id) }}</span>
-    &nbsp; Jogadores: <span id="playersCount">0</span>
-    <span id="status"> aguardando...</span>
-  </div>
-
-  <!-- Socket.IO client (v4 compatível) -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-
-  <!-- Mapa e Player (se existirem em /static) -->
-  <script src="/static/map.js"></script>
-  <script src="/static/player.js"></script>
-
-  <script>
-  // ---- Variáveis injetadas pelo servidor via Jinja ----
-  const room = "{{ room | default(room_id) }}";
-  const initialName = "{{ name | default('Player') }}";
-  // initialFolder é o nome da pasta (p.ex. "verde_escuro") — pode estar vazio
-  const initialFolder = "{{ color | default('') }}";
-
-  // ---- UI e canvas ----
-  document.getElementById('roomLabel').textContent = room;
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  function fit(){ canvas.width = innerWidth; canvas.height = innerHeight; }
-  addEventListener('resize', fit); fit();
-
-  // teclado
-  const keys = {};
-  addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-  addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-  // ---- Instâncias de jogo ----
-  const gameMap = (typeof GameMap !== 'undefined') ? new GameMap() : { width:2000, height:1200, load:()=>Promise.resolve(), draw:()=>{}, isWalkable:()=>true, ready:true };
-  let localPlayer = null;
-  let localPlayerId = null;
-  const others = {}; // player_id -> Player instance or plain object
-
-  // Conecta socket
-  const socket = io();
-
-  // Carrega mapa e cria jogador local (sem playerId ainda)
-  gameMap.load?.().then?.(() => {
-    // cria jogador local; não passamos playerId para evitar /avatar/undefined
-    const initialColorHex = '#C50A0A'; // placeholder — será atualizado pelo servidor no 'joined'
-    localPlayer = new (window.Player || (function(){return function(){}}))(gameMap, { name: initialName, color: initialColorHex, playerSize: 80 });
-    // envia pedido de join ao servidor informando o NOME da pasta (initialFolder)
-    socket.emit('join', { room, name: localPlayer.name, color: initialFolder, x: localPlayer.x || 0, y: localPlayer.y || 0 });
-    document.getElementById('status').textContent = 'entrando...';
-    requestAnimationFrame(loop);
-  }).catch(err => {
-    console.warn('gameMap.load erro', err);
-    localPlayer = new (window.Player || (function(){return function(){}}))(gameMap, { name: initialName, color:'#C50A0A', playerSize:80 });
-    socket.emit('join', { room, name: localPlayer.name, color: initialFolder, x: localPlayer.x || 0, y: localPlayer.y || 0 });
-    requestAnimationFrame(loop);
-  });
-
-  // ---- Socket handlers ----
-
-  // Quando servidor confirma join: recebe player_id e snapshot dos players na sala
-  socket.on('joined', (data) => {
-    // data: { player_id, players: { id: {x,y,name,folder,color} } }
-    if (!data || !data.player_id) return;
-    localPlayerId = data.player_id;
-
-    // Atualiza localPlayer para usar o playerId (vai carregar /avatar/<player_id>/meio.svg etc)
-    if (localPlayer && typeof localPlayer.setPlayerId === 'function') {
-      localPlayer.setPlayerId(localPlayerId);
-    } else if (localPlayer) {
-      localPlayer.playerId = localPlayerId;
-    }
-
-    // se o servidor nos enviou cor hex, atualiza preview/color do localPlayer
-    const myInfo = data.players?.[localPlayerId];
-    if (myInfo && myInfo.color) {
-      localPlayer.color = myInfo.color;
-    }
-
-    // popula others (criando Player instances e chamando setPlayerId para cada)
-    for (const pid in others) delete others[pid];
-    for (const pid in (data.players || {})) {
-      if (pid === localPlayerId) continue;
-      const info = data.players[pid] || {};
-      if (typeof Player === 'function') {
-        const p = new Player(gameMap, { name: info.name || ('P'+pid.slice(-4)), color: info.color || '#C50A0A', playerSize: 75 });
-        // solicita avatar do servidor para esse player
-        if (typeof p.setPlayerId === 'function') p.setPlayerId(pid);
-        p.x = info.x || 0;
-        p.y = info.y || 0;
-        // optionally set facing/currentFrame if provided
-        p.facingRight = (info.facingRight !== undefined) ? info.facingRight : true;
-        p.currentFrame = info.currentFrame || 'meio';
-        others[pid] = p;
-      } else {
-        others[pid] = { x: info.x||0, y: info.y||0, name: info.name||('P'+pid.slice(-4)), color: info.color||'#C50A0A' };
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sala {{ room | default(room_id) }} - Mapa Multiplayer</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #061;
+        color: #fff;
+        font-family: system-ui, Arial;
       }
-    }
-
-    document.getElementById('playersCount').textContent = String(1 + Object.keys(others).length);
-    document.getElementById('status').textContent = `id:${localPlayerId.slice(-6)} • jogadores:${1 + Object.keys(others).length}`;
-  });
-
-  // Novo jogador entrou
-  socket.on('player_joined', (info) => {
-    if (!info || !info.player_id) return;
-    const pid = info.player_id;
-    if (pid === localPlayerId) return;
-    if (typeof Player === 'function') {
-      const p = new Player(gameMap, { name: info.name||('P'+pid.slice(-4)), color: info.color||'#C50A0A', playerSize:75 });
-      if (typeof p.setPlayerId === 'function') p.setPlayerId(pid);
-      p.x = info.x || 0;
-      p.y = info.y || 0;
-      others[pid] = p;
-    } else {
-      others[pid] = { x: info.x||0, y: info.y||0, name: info.name||('P'+pid.slice(-4)), color: info.color||'#C50A0A' };
-    }
-    document.getElementById('playersCount').textContent = String(1 + Object.keys(others).length);
-  });
-
-  // Outro jogador se moveu
-  socket.on('player_moved', (info) => {
-    if (!info || !info.player_id) return;
-    const pid = info.player_id;
-    if (pid === localPlayerId) return; // ignore echoes
-    const p = others[pid];
-    if (p) {
-      p.x = info.x;
-      p.y = info.y;
-      if (info.facingRight !== undefined) p.facingRight = info.facingRight;
-      if (info.currentFrame !== undefined) p.currentFrame = info.currentFrame;
-    } else {
-      // cria on-demand
-      if (typeof Player === 'function') {
-        const newP = new Player(gameMap, { name: info.name||('P'+pid.slice(-4)), color: info.color||'#C50A0A', playerSize:75 });
-        if (typeof newP.setPlayerId === 'function') newP.setPlayerId(pid);
-        newP.x = info.x; newP.y = info.y;
-        others[pid] = newP;
-      } else {
-        others[pid] = { x: info.x||0, y: info.y||0, name: info.name||('P'+pid.slice(-4)), color: info.color||'#C50A0A' };
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
       }
-      document.getElementById('playersCount').textContent = String(1 + Object.keys(others).length);
-    }
-  });
-
-  // jogador saiu
-  socket.on('player_left', (data) => {
-    if (!data || !data.player_id) return;
-    delete others[data.player_id];
-    document.getElementById('playersCount').textContent = String(1 + Object.keys(others).length);
-  });
-
-  socket.on('disconnect', () => {
-    document.getElementById('status').textContent = 'desconectado';
-  });
-
-  // ---- Envia posição (throttle) ----
-  let lastSent = 0;
-  const POS_INTERVAL = 100; // ms
-
-  function sendPositionIfNeeded() {
-    if (!socket || !socket.connected || !localPlayer || !localPlayerId) return;
-    const now = performance.now();
-    if (now - lastSent < POS_INTERVAL) return;
-    lastSent = now;
-    socket.emit('pos_update', {
-      room,
-      player_id: localPlayerId,
-      x: localPlayer.x,
-      y: localPlayer.y,
-      facingRight: localPlayer.facingRight,
-      currentFrame: localPlayer.currentFrame
-    });
-  }
-
-  // ---- Loop principal ----
-  const camera = { x: 0, y: 0 };
-  let lastTs = 0;
-  function loop(ts) {
-    if (!lastTs) lastTs = ts;
-    const dt = Math.min(0.05, (ts - lastTs) / 1000);
-    lastTs = ts;
-
-    // update local
-    if (localPlayer && typeof localPlayer.update === 'function') {
-      localPlayer.update(dt, keys);
-      // keep inside map bounds
-      if (gameMap && gameMap.width) {
-        localPlayer.x = Math.max(0, Math.min(gameMap.width, localPlayer.x));
-        localPlayer.y = Math.max(0, Math.min(gameMap.height || Infinity, localPlayer.y));
+      #ui {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        z-index: 30;
+        background: rgba(0, 0, 0, 0.6);
+        color: #0f0;
+        padding: 8px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 14px;
       }
-    }
-
-    sendPositionIfNeeded();
-
-    // interpolate others (if needed) - simple approach: immediate
-    // camera smoothing
-    if (localPlayer) {
-      camera.x += (localPlayer.x - canvas.width/2 - camera.x) * 0.12;
-      camera.y += (localPlayer.y - canvas.height/2 - camera.y) * 0.12;
-    }
-
-    // draw
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = '#001a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    try { gameMap.draw(ctx, camera.x, camera.y); } catch(e){}
-
-    // draw others
-    for (const pid in others) {
-      const p = others[pid];
-      if (p && typeof p.draw === 'function') {
-        p.draw(ctx, camera.x, camera.y);
-      } else if (p) {
-        // fallback draw
-        const sx = (p.x||0) - camera.x, sy = (p.y||0) - camera.y;
-        ctx.save();
-        ctx.beginPath(); ctx.fillStyle = '#bfe'; ctx.arc(sx,sy,18,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle = p.color || '#C50A0A'; ctx.fillRect(sx-12, sy-22, 24, 6);
-        ctx.font='12px monospace'; ctx.fillStyle='#0f0'; ctx.textAlign='center'; ctx.fillText(p.name||pid.slice(-6), sx, sy-32);
-        ctx.restore();
+      #ui input {
+        margin-left: 6px;
       }
-    }
+      #status {
+        color: #9f9;
+        margin-left: 10px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
 
-    // draw local on top
-    if (localPlayer && typeof localPlayer.draw === 'function') localPlayer.draw(ctx, camera.x, camera.y);
+    <div id="ui">
+      Sala: <span id="roomLabel">{{ room | default(room_id) }}</span> &nbsp;
+      Jogadores: <span id="playersCount">0</span>
+      <span id="status"> aguardando...</span>
+    </div>
 
-    requestAnimationFrame(loop);
-  }
+    <!-- Socket.IO client (v4 compatível) -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
-  // se o mapa já carregou, dispara o loop (coberto pelo load acima)
-  requestAnimationFrame(loop);
+    <!-- Mapa e Player (se existirem em /static) -->
+    <script src="/static/map.js"></script>
+    <script src="/static/player.js"></script>
 
-  // envia leave quando fechar a aba
-  window.addEventListener('beforeunload', () => {
-    try { if (socket && localPlayerId) socket.emit('leave', { room, player_id: localPlayerId }); } catch(e){}
-    try { socket?.disconnect(); } catch(e){}
-  });
+    <script>
+      // ---- Variáveis injetadas pelo servidor via Jinja ----
+      const room = '{{ room | default(room_id) }}';
+      const initialName = "{{ name | default('Player') }}";
+      // initialFolder é o nome da pasta (p.ex. "verde_escuro") — pode estar vazio
+      const initialFolder = "{{ color | default('') }}";
 
-  // debug helper
-  window._mp = { socketRef: () => socket, others, localPlayer, gameMap };
+      // ---- UI e canvas ----
+      document.getElementById('roomLabel').textContent = room;
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      function fit() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener('resize', fit);
+      fit();
 
-  </script>
-</body>
+      // teclado
+      const keys = {};
+      addEventListener('keydown', (e) => (keys[e.key.toLowerCase()] = true));
+      addEventListener('keyup', (e) => (keys[e.key.toLowerCase()] = false));
+
+      // ---- Instâncias de jogo ----
+      const gameMap =
+        typeof GameMap !== 'undefined'
+          ? new GameMap()
+          : {
+              width: 2000,
+              height: 1200,
+              load: () => Promise.resolve(),
+              draw: () => {},
+              isWalkable: () => true,
+              ready: true,
+            };
+      let localPlayer = null;
+      let localPlayerId = null;
+      const others = {}; // player_id -> Player instance or plain object
+
+      // Conecta socket
+      const socket = io();
+
+      // Carrega mapa e cria jogador local (sem playerId ainda)
+      gameMap
+        .load?.()
+        .then?.(() => {
+          // cria jogador local; não passamos playerId para evitar /avatar/undefined
+          const initialColorHex = '#C50A0A'; // placeholder — será atualizado pelo servidor no 'joined'
+          localPlayer = new (window.Player ||
+            function () {
+              return function () {};
+            })(gameMap, {
+            name: initialName,
+            color: initialColorHex,
+            playerSize: 80,
+          });
+          // envia pedido de join ao servidor informando o NOME da pasta (initialFolder)
+          socket.emit('join', {
+            room,
+            name: localPlayer.name,
+            color: initialFolder,
+            x: localPlayer.x || 0,
+            y: localPlayer.y || 0,
+          });
+          document.getElementById('status').textContent = 'entrando...';
+          requestAnimationFrame(loop);
+        })
+        .catch((err) => {
+          console.warn('gameMap.load erro', err);
+          localPlayer = new (window.Player ||
+            function () {
+              return function () {};
+            })(gameMap, {
+            name: initialName,
+            color: '#C50A0A',
+            playerSize: 80,
+          });
+          socket.emit('join', {
+            room,
+            name: localPlayer.name,
+            color: initialFolder,
+            x: localPlayer.x || 0,
+            y: localPlayer.y || 0,
+          });
+          requestAnimationFrame(loop);
+        });
+
+      // ---- Socket handlers ----
+
+      // Quando servidor confirma join: recebe player_id e snapshot dos players na sala
+      socket.on('joined', (data) => {
+        // data: { player_id, players: { id: {x,y,name,folder,color} } }
+        if (!data || !data.player_id) return;
+        localPlayerId = data.player_id;
+
+        // Atualiza localPlayer para usar o playerId (vai carregar /avatar/<player_id>/meio.svg etc)
+        if (localPlayer && typeof localPlayer.setPlayerId === 'function') {
+          localPlayer.setPlayerId(localPlayerId);
+        } else if (localPlayer) {
+          localPlayer.playerId = localPlayerId;
+        }
+
+        // se o servidor nos enviou cor hex, atualiza preview/color do localPlayer
+        const myInfo = data.players?.[localPlayerId];
+        if (myInfo && myInfo.color) {
+          localPlayer.color = myInfo.color;
+        }
+
+        // popula others (criando Player instances e chamando setPlayerId para cada)
+        for (const pid in others) delete others[pid];
+        for (const pid in data.players || {}) {
+          if (pid === localPlayerId) continue;
+          const info = data.players[pid] || {};
+          if (typeof Player === 'function') {
+            const p = new Player(gameMap, {
+              name: info.name || 'P' + pid.slice(-4),
+              color: info.color || '#C50A0A',
+              playerSize: 75,
+            });
+            // solicita avatar do servidor para esse player
+            if (typeof p.setPlayerId === 'function') p.setPlayerId(pid);
+            p.x = info.x || 0;
+            p.y = info.y || 0;
+            // optionally set facing/currentFrame if provided
+            p.facingRight =
+              info.facingRight !== undefined ? info.facingRight : true;
+            p.currentFrame = info.currentFrame || 'meio';
+            others[pid] = p;
+          } else {
+            others[pid] = {
+              x: info.x || 0,
+              y: info.y || 0,
+              name: info.name || 'P' + pid.slice(-4),
+              color: info.color || '#C50A0A',
+            };
+          }
+        }
+
+        document.getElementById('playersCount').textContent = String(
+          1 + Object.keys(others).length,
+        );
+        document.getElementById('status').textContent =
+          `id:${localPlayerId.slice(-6)} • jogadores:${1 + Object.keys(others).length}`;
+      });
+
+      // Novo jogador entrou
+      socket.on('player_joined', (info) => {
+        if (!info || !info.player_id) return;
+        const pid = info.player_id;
+        if (pid === localPlayerId) return;
+        if (typeof Player === 'function') {
+          const p = new Player(gameMap, {
+            name: info.name || 'P' + pid.slice(-4),
+            color: info.color || '#C50A0A',
+            playerSize: 75,
+          });
+          if (typeof p.setPlayerId === 'function') p.setPlayerId(pid);
+          p.x = info.x || 0;
+          p.y = info.y || 0;
+          others[pid] = p;
+        } else {
+          others[pid] = {
+            x: info.x || 0,
+            y: info.y || 0,
+            name: info.name || 'P' + pid.slice(-4),
+            color: info.color || '#C50A0A',
+          };
+        }
+        document.getElementById('playersCount').textContent = String(
+          1 + Object.keys(others).length,
+        );
+      });
+
+      // Outro jogador se moveu
+      socket.on('player_moved', (info) => {
+        if (!info || !info.player_id) return;
+        const pid = info.player_id;
+        if (pid === localPlayerId) return; // ignore echoes
+        const p = others[pid];
+        if (p) {
+          p.x = info.x;
+          p.y = info.y;
+          if (info.facingRight !== undefined) p.facingRight = info.facingRight;
+          if (info.currentFrame !== undefined)
+            p.currentFrame = info.currentFrame;
+        } else {
+          // cria on-demand
+          if (typeof Player === 'function') {
+            const newP = new Player(gameMap, {
+              name: info.name || 'P' + pid.slice(-4),
+              color: info.color || '#C50A0A',
+              playerSize: 75,
+            });
+            if (typeof newP.setPlayerId === 'function') newP.setPlayerId(pid);
+            newP.x = info.x;
+            newP.y = info.y;
+            others[pid] = newP;
+          } else {
+            others[pid] = {
+              x: info.x || 0,
+              y: info.y || 0,
+              name: info.name || 'P' + pid.slice(-4),
+              color: info.color || '#C50A0A',
+            };
+          }
+          document.getElementById('playersCount').textContent = String(
+            1 + Object.keys(others).length,
+          );
+        }
+      });
+
+      // jogador saiu
+      socket.on('player_left', (data) => {
+        if (!data || !data.player_id) return;
+        delete others[data.player_id];
+        document.getElementById('playersCount').textContent = String(
+          1 + Object.keys(others).length,
+        );
+      });
+
+      socket.on('disconnect', () => {
+        document.getElementById('status').textContent = 'desconectado';
+      });
+
+      // ---- Envia posição (throttle) ----
+      let lastSent = 0;
+      const POS_INTERVAL = 100; // ms
+
+      function sendPositionIfNeeded() {
+        if (!socket || !socket.connected || !localPlayer || !localPlayerId)
+          return;
+        const now = performance.now();
+        if (now - lastSent < POS_INTERVAL) return;
+        lastSent = now;
+        socket.emit('pos_update', {
+          room,
+          player_id: localPlayerId,
+          x: localPlayer.x,
+          y: localPlayer.y,
+          facingRight: localPlayer.facingRight,
+          currentFrame: localPlayer.currentFrame,
+        });
+      }
+
+      // ---- Loop principal ----
+      const camera = { x: 0, y: 0 };
+      let lastTs = 0;
+      function loop(ts) {
+        if (!lastTs) lastTs = ts;
+        const dt = Math.min(0.05, (ts - lastTs) / 1000);
+        lastTs = ts;
+
+        // update local
+        if (localPlayer && typeof localPlayer.update === 'function') {
+          localPlayer.update(dt, keys);
+          // keep inside map bounds
+          if (gameMap && gameMap.width) {
+            localPlayer.x = Math.max(0, Math.min(gameMap.width, localPlayer.x));
+            localPlayer.y = Math.max(
+              0,
+              Math.min(gameMap.height || Infinity, localPlayer.y),
+            );
+          }
+        }
+
+        sendPositionIfNeeded();
+
+        // interpolate others (if needed) - simple approach: immediate
+        // camera smoothing
+        if (localPlayer) {
+          camera.x += (localPlayer.x - canvas.width / 2 - camera.x) * 0.12;
+          camera.y += (localPlayer.y - canvas.height / 2 - camera.y) * 0.12;
+        }
+
+        // draw
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#001a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        try {
+          gameMap.draw(ctx, camera.x, camera.y);
+        } catch (e) {}
+
+        // draw others
+        for (const pid in others) {
+          const p = others[pid];
+          if (p && typeof p.draw === 'function') {
+            p.draw(ctx, camera.x, camera.y);
+          } else if (p) {
+            // fallback draw
+            const sx = (p.x || 0) - camera.x,
+              sy = (p.y || 0) - camera.y;
+            ctx.save();
+            ctx.beginPath();
+            ctx.fillStyle = '#bfe';
+            ctx.arc(sx, sy, 18, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = p.color || '#C50A0A';
+            ctx.fillRect(sx - 12, sy - 22, 24, 6);
+            ctx.font = '12px monospace';
+            ctx.fillStyle = '#0f0';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.name || pid.slice(-6), sx, sy - 32);
+            ctx.restore();
+          }
+        }
+
+        // draw local on top
+        if (localPlayer && typeof localPlayer.draw === 'function')
+          localPlayer.draw(ctx, camera.x, camera.y);
+
+        requestAnimationFrame(loop);
+      }
+
+      // se o mapa já carregou, dispara o loop (coberto pelo load acima)
+      requestAnimationFrame(loop);
+
+      // envia leave quando fechar a aba
+      window.addEventListener('beforeunload', () => {
+        try {
+          if (socket && localPlayerId)
+            socket.emit('leave', { room, player_id: localPlayerId });
+        } catch (e) {}
+        try {
+          socket?.disconnect();
+        } catch (e) {}
+      });
+
+      // debug helper
+      window._mp = { socketRef: () => socket, others, localPlayer, gameMap };
+    </script>
+  </body>
 </html>
