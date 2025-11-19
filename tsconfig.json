@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "rootDir": "./server",
+    "outDir": "./dist",
+
+    "module": "ESNext",
+    "target": "ES2022",
+    "moduleResolution": "bundler",
+    "types": [],
+
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    "strict": true,
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": false,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": false,
+    "noEmit": false,
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["server/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.config.ts", "static", "templates"]
+}

@@ -8,31 +8,32 @@ class GameMap {
     this.height = this.BASE_H * this.SCALE;
     this.canvas = null;
     this.ctx = null;
-    this.imageData = null;           // colisão (apenas mapa.svg)
-    this.portalImageData = null;      // para detectar os portais
-    this.portalCenters = [];          // [{x,y}, ...]
+    this.imageData = null; // colisão (apenas mapa.svg)
+    this.portalImageData = null; // para detectar os portais
+    this.portalCenters = []; // [{x,y}, ...]
     this.ready = false;
 
     this.useAlphaForWalk = true;
     this.brightnessThreshold = 30;
 
-    this.floorSrc = '/static/floor.png';
-    this.portalSrc = '/static/portais.svg';
+    this.floorSrc = '/public/floor.png';
+    this.portalSrc = '/public/portais.svg';
   }
 
   async load() {
-    const loadImg = (src) => new Promise((resolve, reject) => {
-      const img = new Image();
-      img.src = src;
-      img.onload = () => resolve(img);
-      img.onerror = (e) => reject('Erro ao carregar: ' + src);
-    });
+    const loadImg = (src) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => resolve(img);
+        img.onerror = (e) => reject('Erro ao carregar: ' + src);
+      });
 
     try {
       const [svgImg, floorImg, portalImg] = await Promise.all([
-        loadImg('/static/mapa.svg'),
+        loadImg('/public/mapa.svg'),
         loadImg(this.floorSrc),
-        loadImg(this.portalSrc)
+        loadImg(this.portalSrc),
       ]);
 
       // 1. Canvas de colisão (só o mapa.svg)
@@ -58,13 +59,22 @@ class GameMap {
       portalCanvas.height = this.height;
       const pCtx = portalCanvas.getContext('2d');
       pCtx.drawImage(portalImg, 0, 0, this.width, this.height);
-      this.portalImageData = pCtx.getImageData(0, 0, this.width, this.height).data;
+      this.portalImageData = pCtx.getImageData(
+        0,
+        0,
+        this.width,
+        this.height,
+      ).data;
 
       // 4. Detecta os centros automaticamente
       this.portalCenters = this.findPortalCenters();
 
       this.ready = true;
-      console.log('%cMapa carregado! Portais encontrados:', 'color:#0f0;font-weight:bold', this.portalCenters.length);
+      console.log(
+        '%cMapa carregado! Portais encontrados:',
+        'color:#0f0;font-weight:bold',
+        this.portalCenters.length,
+      );
       console.log('Centros:', this.portalCenters);
     } catch (e) {
       console.error('gameMap.load erro', e);
@@ -84,7 +94,16 @@ class GameMap {
 
     const isSolid = (i) => data[i + 3] > 100; // alpha > 100 = pixel do portal
 
-    const dirs = [[-1,0],[1,0],[0,-1],[0,1],[ -1,-1],[ -1,1],[1,-1],[1,1]];
+    const dirs = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1],
+    ];
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -92,8 +111,10 @@ class GameMap {
         const byte = idx * 4;
         if (visited[idx] || !isSolid(byte)) continue;
 
-        let sumX = 0, sumY = 0, count = 0;
-        const queue = [{x, y}];
+        let sumX = 0,
+          sumY = 0,
+          count = 0;
+        const queue = [{ x, y }];
         visited[idx] = 1;
 
         while (queue.length) {
@@ -109,16 +130,17 @@ class GameMap {
               const nidx = ny * w + nx;
               if (!visited[nidx] && isSolid(nidx * 4)) {
                 visited[nidx] = 1;
-                queue.push({x: nx, y: ny});
+                queue.push({ x: nx, y: ny });
               }
             }
           }
         }
 
-        if (count > 80) { // ignora sujeirinha pequena
+        if (count > 80) {
+          // ignora sujeirinha pequena
           centers.push({
             x: Math.round(sumX / count),
-            y: Math.round(sumY / count)
+            y: Math.round(sumY / count),
           });
         }
       }
@@ -129,14 +151,17 @@ class GameMap {
   getPixelRGBA(x, y) {
     x = Math.round(x);
     y = Math.round(y);
-    if (x < 0 || y < 0 || x >= this.width || y >= this.height) return {a:255};
+    if (x < 0 || y < 0 || x >= this.width || y >= this.height)
+      return { a: 255 };
     const i = (y * this.width + x) * 4;
     return {
       r: this.imageData[i],
-      g: this.imageData[i+1],
-      b: this.imageData[i+2],
-      a: this.imageData[i+3],
-      brightness: Math.round((this.imageData[i] + this.imageData[i+1] + this.imageData[i+2]) / 3)
+      g: this.imageData[i + 1],
+      b: this.imageData[i + 2],
+      a: this.imageData[i + 3],
+      brightness: Math.round(
+        (this.imageData[i] + this.imageData[i + 1] + this.imageData[i + 2]) / 3,
+      ),
     };
   }
 
@@ -152,7 +177,8 @@ class GameMap {
       const a = (i / points) * Math.PI * 2;
       const px = Math.round(x + Math.cos(a) * radius);
       const py = Math.round(y + Math.sin(a) * radius);
-      if (px < 0 || py < 0 || px >= this.width || py >= this.height) return false;
+      if (px < 0 || py < 0 || px >= this.width || py >= this.height)
+        return false;
       const pixel = this.getPixelRGBA(px, py);
       if (this.useAlphaForWalk) {
         if (pixel.a !== 0) return false; // alpha 0 = caminhável
@@ -173,7 +199,7 @@ class GameMap {
       const c = this.portalCenters[i];
       const dx = c.x - playerX;
       const dy = c.y - playerY;
-      const dSq = dx*dx + dy*dy;
+      const dSq = dx * dx + dy * dy;
       if (dSq < bestDistSq) {
         bestDistSq = dSq;
         entryIdx = i;
@@ -193,7 +219,7 @@ class GameMap {
       const c = this.portalCenters[i];
       const dx = c.x - entry.x;
       const dy = c.y - entry.y;
-      const dSq = dx*dx + dy*dy;
+      const dSq = dx * dx + dy * dy;
       if (dSq < bestTargetDistSq) {
         bestTargetDistSq = dSq;
         target = c;
@@ -202,7 +228,13 @@ class GameMap {
     if (!target) return null;
 
     // 3. Calcula posição segura perto do portal de saída
-    return this.findSafeExitPosition(target.x, target.y, entry.x, entry.y, playerRadius);
+    return this.findSafeExitPosition(
+      target.x,
+      target.y,
+      entry.x,
+      entry.y,
+      playerRadius,
+    );
   }
 
   // FUNÇÃO NOVA: garante 100% posição segura e perto do portal
@@ -210,7 +242,7 @@ class GameMap {
     const dx = targetX - entryX;
     const dy = targetY - entryY;
     const dist = Math.hypot(dx, dy);
-    
+
     if (dist === 0) {
       // caso raro de dois portais no mesmo lugar → busca radial
       return this.findRadialSafeSpot(targetX, targetY, playerRadius);
@@ -227,7 +259,7 @@ class GameMap {
       const px = targetX + nx * d;
       const py = targetY + ny * d;
       if (this.isWalkable(px, py, playerRadius)) {
-        return {x: px, y: py};
+        return { x: px, y: py };
       }
     }
 
@@ -236,23 +268,23 @@ class GameMap {
       const px = targetX - nx * d;
       const py = targetY - ny * d;
       if (this.isWalkable(px, py, playerRadius)) {
-        return {x: px, y: py};
+        return { x: px, y: py };
       }
     }
 
     // 3º tenta os lados (esquerda e direita)
-    const perpX = -ny;  // vetor perpendicular 90°
+    const perpX = -ny; // vetor perpendicular 90°
     const perpY = nx;
     for (let d of distances) {
       // esquerda
       let px = targetX + perpX * d;
       let py = targetY + perpY * d;
-      if (this.isWalkable(px, py, playerRadius)) return {x: px, y: py};
+      if (this.isWalkable(px, py, playerRadius)) return { x: px, y: py };
 
       // direita
       px = targetX - perpX * d;
       py = targetY - perpY * d;
-      if (this.isWalkable(px, py, playerRadius)) return {x: px, y: py};
+      if (this.isWalkable(px, py, playerRadius)) return { x: px, y: py };
     }
 
     // 4º fallback: busca circular (sempre acha alguma coisa)
@@ -263,7 +295,7 @@ class GameMap {
   findRadialSafeSpot(centerX, centerY, playerRadius = 35, maxRadius = 400) {
     // primeiro tenta o centro (se for caminhável)
     if (this.isWalkable(centerX, centerY, playerRadius)) {
-      return {x: centerX, y: centerY};
+      return { x: centerX, y: centerY };
     }
 
     const step = 20;
@@ -276,13 +308,19 @@ class GameMap {
         const py = centerY + Math.sin(angle) * r;
 
         // dentro do mapa e caminhável?
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height && this.isWalkable(px, py, playerRadius)) {
-          return {x: px, y: py};
+        if (
+          px >= 0 &&
+          px < this.width &&
+          py >= 0 &&
+          py < this.height &&
+          this.isWalkable(px, py, playerRadius)
+        ) {
+          return { x: px, y: py };
         }
       }
     }
 
     // último recurso (quase impossível chegar aqui)
-    return {x: centerX, y: centerY};
+    return { x: centerX, y: centerY };
   }
 }
