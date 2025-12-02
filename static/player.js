@@ -1,6 +1,5 @@
 // static/player.js
 class Player {
-    // options: { map, playerId (opt), name, playerSize, color }
     constructor(map, options = {}) {
         this.map = map;
         this.playerId = options.playerId || null;
@@ -9,6 +8,10 @@ class Player {
         this.speed = options.speed || 320;
         this.playerSize = options.playerSize || 75;
         this.color = options.color || '#C50A0A';
+
+        // NOVO: sistema de carregamento do portal (5 segundos)
+        this.portalCharging = 0;        // 0 a 5 (segundos)
+        this.teleportCooldown = 0;      // evita spam após teletransporte
 
         // posição inicial
         this.x = (this.map.width || 1000) / 2;
@@ -24,21 +27,18 @@ class Player {
         this.frameIndex = 0;
         this.currentFrame = 'meio';
 
-        // frames: Image objects (não necessariamente com src ainda)
+        // frames do personagem
         this.frames = {};
         ['meio','direito','esquerdo'].forEach(k => {
             this.frames[k] = new Image();
-            // se tivermos playerId já definido, usamos a rota dinâmica do servidor
             if (this.playerId) {
                 this.frames[k].src = `/avatar/${this.playerId}/${k}.svg`;
             } else {
-                // fallback para arquivo estático (se existir)
                 this.frames[k].src = `/static/personagem/${k}.svg`;
             }
         });
     }
 
-    // procura spawn seguro (opcional)
     findSafeSpawn() {
         if (!this.map || typeof this.map.isWalkable !== 'function') return;
         const step = 15;
@@ -51,7 +51,6 @@ class Player {
         }
     }
 
-    // quando o servidor nos der um playerId, atualiza os src das imagens para servir colorizaçãovia /avatar/
     setPlayerId(playerId) {
         if (!playerId) return;
         this.playerId = playerId;
@@ -79,6 +78,7 @@ class Player {
 
         if (dx !== 0) this.facingRight = dx > 0;
 
+        // Animação de caminhada
         if (isMoving) {
             if (!this.wasMoving) {
                 this.currentFrame = 'direito';
@@ -95,15 +95,76 @@ class Player {
             this.currentFrame = 'meio';
         }
         this.wasMoving = isMoving;
+
+        // ================================================
+        // PORTAL: 5 segundos de carregamento + barra visual
+        // ================================================
+        if (this.map?.getTeleportDestination) {
+            // cooldown após teletransporte
+            if (this.teleportCooldown > 0) {
+                this.teleportCooldown -= dt;
+                if (this.teleportCooldown < 0) this.teleportCooldown = 0;
+            }
+
+            const destination = this.map.getTeleportDestination(this.x, this.y);
+
+            if (destination && this.teleportCooldown <= 0) {
+                // está dentro do raio do portal → carrega
+                this.portalCharging += dt;
+
+                if (this.portalCharging >= 5.0) {
+                    // TELEPORTA!
+                    this.x = destination.x;
+                    this.y = destination.y;
+                    this.portalCharging = 0;
+                    this.teleportCooldown = 1.5;
+                    console.log('%cTELEPORTADO COM SUCESSO!', 'background:#00ff00;color:#000;font-size:18px;font-weight:bold');
+                }
+            } else {
+                // saiu do portal antes de completar → cancela
+                if (this.portalCharging > 0) {
+                    this.portalCharging = 0;
+                }
+            }
+        }
     }
 
     draw(ctx, cameraX, cameraY) {
         const screenX = this.x - cameraX;
         const screenY = this.y - cameraY;
-
         const img = this.frames[this.currentFrame];
 
-        // nome acima da cabeça
+        // === BARRA DE CARREGAMENTO DO PORTAL (5 segundos) ===
+        if (this.portalCharging > 0) {
+            const progress = Math.min(this.portalCharging / 5.0, 1);
+            const barWidth = 120;
+            const barHeight = 14;
+            const barY = screenY - this.playerSize/2 - 45;
+
+            // fundo preto
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(screenX - barWidth/2, barY, barWidth, barHeight);
+
+            // barra de progresso (verde → amarelo → vermelho conforme enche)
+            const r = progress < 0.5 ? 255 : Math.floor(255 * (1 - progress) * 2);
+            const g = 255;
+            ctx.fillStyle = `rgb(${r}, ${g}, 0)`;
+            ctx.fillRect(screenX - barWidth/2, barY, barWidth * progress, barHeight);
+
+            // borda branca
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(screenX - barWidth/2, barY, barWidth, barHeight);
+
+            // texto "Teleportando..."
+            ctx.font = 'bold 15px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Teleportando...', screenX, barY - 15);
+        }
+
+        // Nome do jogador
         const nameY = screenY - this.playerSize/2 - 12;
         ctx.save();
         ctx.font = '16px system-ui, Arial';
@@ -116,19 +177,19 @@ class Player {
         ctx.fillText(this.name, screenX, nameY);
         ctx.restore();
 
+        // Desenha o personagem
         if (img && img.complete && img.naturalWidth !== 0) {
             ctx.save();
             ctx.translate(screenX, screenY);
-            if (!this.facingRight) ctx.scale(-1,1);
+            if (!this.facingRight) ctx.scale(-1, 1);
             const size = this.playerSize;
             ctx.drawImage(img, -size/2, -size/2, size, size);
             ctx.restore();
         } else {
-            // fallback: círculo
             ctx.save();
             ctx.fillStyle = "#ff4785";
             ctx.beginPath();
-            ctx.arc(screenX, screenY, this.radius, 0, Math.PI*2);
+            ctx.arc(screenX, screenY, this.radius, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
         }
